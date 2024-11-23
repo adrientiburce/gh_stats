@@ -1,0 +1,6 @@
+.env
+gh_calls/
+
+# build
+gh_stats
+main

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top Repositories</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Top 5 Repositories</h1>
+    <div class="grid-container">
+        {{ range . }}
+        <div class="card">
+            <div class="card-title">{{ .Name }}</div>
+            <div class="card-description">
+                {{ if .Description }}
+                {{ .Description }}
+                {{ else }}
+                <em>No description provided.</em>
+                {{ end }}
+            </div>
+            <div class="card-footer">
+                <span class="team">🖊️ {{ .Team }}</span>
+                <span>{{ .PushedAt }}</span>
+            </div>
+
+            <!-- Pull requests section -->
+            {{ if .PullRequests }}
+            <div class="pull-requests">
+                <div class="pull-requests-title">Open Pull Requests:</div>
+                <ul class="pull-requests-list">
+                    {{ range .PullRequests }}
+                    <li>
+                        <a href="{{ .HTMLURL }}" target="_blank">{{ .Title }}</a>
+                        <small>({{ .CreatedAt }})</small>
+                    </li>
+                    {{ end }}
+                </ul>
+            </div>
+            {{ else }}
+            <div class="pull-requests">
+                <em>No open pull requests.</em>
+            </div>
+            {{ end }}
+        </div>
+        {{ end }}
+    </div>
+</body>
+</html>
