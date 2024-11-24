@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,21 +23,27 @@ type PullRequest struct {
 
 // Repository struct with PRs
 type Repository struct {
-	Name              string        `json:"name"`
-	FullName          string        `json:"full_name"`
-	Description       string        `json:"description"`
-	Stargazers        int           `json:"stargazers_count"`
-	PullRequests      []PullRequest `json:"pull_requests"`
-	Topics            []string      `json:"topics"`
-	PushedAt          string        `json:"pushed_at"`
+	Name        string   `json:"name"`
+	FullName    string   `json:"full_name"`
+	Description string   `json:"description"`
+	Stargazers  int      `json:"stargazers_count"`
+	Topics      []string `json:"topics"`
+	PushedAt    string   `json:"pushed_at"`
+	// HTMLURL           string        `json:"html_url"`
 	Team              string
+	PullRequests      []PullRequest
 	RecentCommits     []CommitRes
 	RecentDeployments []Deployment
 }
 
 type Author struct {
-	Name string `json:"pushed_at"`
+	Name string `json:"name"`
 	Date string `json:"date"`
+}
+
+type FullCommit struct {
+	Commit  Commit `json:"commit"`
+	HTMLURL string `json:"html_url"`
 }
 
 type Commit struct {
@@ -53,9 +60,12 @@ type CommitRes struct {
 type Deployment struct {
 	CreatedAt   string `json:"created_at"`
 	Environment string `json:"environment"`
+	Stack       string
 }
 
 const MAX_REPOS = 10
+const DEPLOYMENT_LIMITS = 3
+const COMMITS_LIMITS = 5
 
 // GetTopRepositories fetches top repositories and their PRs
 func GetTopRepositories() []Repository {
@@ -84,20 +94,6 @@ func GetTopRepositories() []Repository {
 	return repos
 }
 
-func fetchOneRepo(name string, repos *[]Repository, m *sync.Mutex, wg *sync.WaitGroup) {
-	defer wg.Done()
-	repo := fetchRepo(name, doGithubRequest)
-	if repo != nil {
-		repo.PullRequests = fetchPullRequests(name)
-		repo.RecentCommits = fetchCommits(name)
-		repo.RecentDeployments = fetchDeploy(name)
-	}
-
-	m.Lock()
-	*repos = append(*repos, *repo)
-	m.Unlock()
-}
-
 func doGithubRequest(repoName string, path string) (res *http.Response, err error) {
 	apiURL := "https://api.github.com/repos/Glovo/" + repoName
 	if path != "" {
@@ -119,7 +115,23 @@ func doGithubRequest(repoName string, path string) (res *http.Response, err erro
 	return resp, err
 }
 
-func fetchRepo(name string, doGithubRequest func(repoName, path string) (*http.Response, error)) *Repository {
+func fetchOneRepo(name string, repos *[]Repository, m *sync.Mutex, wg *sync.WaitGroup) {
+	defer wg.Done()
+	repo := fetchRepo(name)
+	if repo != nil {
+		repo.PullRequests = fetchPullRequests(name)
+		repo.RecentDeployments = fetchDeploy(name)
+		repo.RecentCommits = fetchCommits(name)
+	}
+
+	// doGithubRequest func(repoName, path string) (*http.Response, error)
+
+	m.Lock()
+	*repos = append(*repos, *repo)
+	m.Unlock()
+}
+
+func fetchRepo(name string) *Repository {
 	resp, err := doGithubRequest(name, "")
 	if err != nil {
 		log.Printf("Github request failed for %s: %s", name, err)
@@ -155,26 +167,28 @@ func fetchCommits(repoName string) []CommitRes {
 	defer resp.Body.Close()
 
 	var commits []CommitRes
-	var recentCommits []Commit
+	var recentCommits []FullCommit
 	if err := json.NewDecoder(resp.Body).Decode(&recentCommits); err != nil {
 		log.Printf("Failed to parse commits for %s: %v", repoName, err)
 		return commits
 	}
 
+	fmt.Println("recentCommits", len(recentCommits))
+
 	// Convert to []Commit and limit to 5 commits from developers
 	for _, c := range recentCommits {
-		if c.Author.Name == "GlovoRobot" {
-			break
+		if c.Commit.Author.Name == "GlovoRobot" {
+			continue
 		}
 
-		parsedDate, _ := time.Parse(time.RFC3339, c.Author.Date)
+		parsedDate, _ := time.Parse(time.RFC3339, c.Commit.Author.Date)
 		commits = append(commits, CommitRes{
-			Message: c.Message,
-			Author:  c.Author.Name,
+			Message: c.Commit.Message,
+			Author:  c.Commit.Author.Name,
 			Date:    parsedDate.Format("Jan 2"),
 		})
 
-		if len(commits) >= 5 {
+		if len(commits) >= COMMITS_LIMITS {
 			break
 		}
 	}
@@ -183,7 +197,7 @@ func fetchCommits(repoName string) []CommitRes {
 }
 
 func fetchDeploy(repoName string) (deploy []Deployment) {
-	resp, err := doGithubRequest(repoName, "deployments?per_page=10")
+	resp, err := doGithubRequest(repoName, "deployments?per_page="+strconv.Itoa(DEPLOYMENT_LIMITS))
 	if err != nil {
 		log.Printf("Failed to fetch deploy for %s: %v", repoName, err)
 		return
@@ -195,18 +209,21 @@ func fetchDeploy(repoName string) (deploy []Deployment) {
 		return
 	}
 
-	// Regex to extract the environment name within square brackets
-	envRegex := regexp.MustCompile(`\[(.*?)\]`)
+	// Regex to extract the environment name within square brackets and the stack name
+	envRegex := regexp.MustCompile(`\[(.*?)\]\s+(.*)`)
 
 	for i, d := range deploy {
 		parsedTime, _ := time.Parse(time.RFC3339, d.CreatedAt)
-		deploy[i].CreatedAt = parsedTime.Format("Jan 2")
+		deploy[i].CreatedAt = parsedTime.Format("Jan 2 15:04:05")
 
 		matches := envRegex.FindStringSubmatch(d.Environment)
-		if len(matches) > 1 {
-			deploy[i].Environment = matches[1] // The captured group
+		if len(matches) > 2 {
+			deploy[i].Environment = matches[1] // Extracted environment (e.g., "stage")
+			deploy[i].Stack = matches[2]       // Extracted stack (e.g., "customer-profile-events")
 		} else {
-			deploy[i].Environment = d.Environment // Fallback to original
+			// Fallback for cases where regex doesn't match
+			deploy[i].Environment = d.Environment
+			deploy[i].Stack = "Unknown Stack"
 		}
 	}
 
@@ -232,6 +249,8 @@ func fetchPullRequests(repoName string) []PullRequest {
 		parsedTime, _ := time.Parse(time.RFC3339, pr.CreatedAt)
 		prs[i].CreatedAt = parsedTime.Format("Jan 2")
 	}
+
+	fmt.Printf("fetched %d PR from: %s \n", len(prs), repoName)
 
 	return prs
 }

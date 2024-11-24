@@ -15,6 +15,7 @@ func RenderTemplate(w http.ResponseWriter, repos []api.Repository) {
 		return
 	}
 
+	// fmt.Printf("Rendering template with repositories: %+v\n", repos) // Debug
 	err = tmpl.Execute(w, repos)
 	if err != nil {
 		http.Error(w, "Error rendering template", http.StatusInternalServerError)

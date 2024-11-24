@@ -30,6 +30,7 @@ func main() {
 		defer logTime("Api call", time.Now())
 		fetchedRepos := api.GetTopRepositories()
 
+		// log.Printf("fetched %d repos", fetchedRepos)
 		reposMutex.Lock()
 		repos = fetchedRepos
 		reposMutex.Unlock()
@@ -39,6 +40,8 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		reposMutex.Lock()
 		defer reposMutex.Unlock()
+
+		// fmt.Printf("passing template repositories: %+v\n", repos) // Debug
 		tmpl.Execute(w, repos)
 	})
 

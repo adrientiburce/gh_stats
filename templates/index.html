@@ -20,7 +20,7 @@
                 {{ end }}
             </div>
             <div class="card-footer">
-                <span class="team">🖊️ {{ .Team }}</span>
+                <span class="team">{{ .Team }}</span>
                 <span>{{ .PushedAt }}</span>
             </div>
 
@@ -42,6 +42,47 @@
                 <em>No open pull requests.</em>
             </div>
             {{ end }}
+
+            <!-- Deployments Section -->
+            {{ if .RecentDeployments }}
+            <div class="deployments">
+                <div class="deployments-title">Recent Deployments:</div>
+                <ul class="deployments-list">
+                    {{ range .RecentDeployments }}
+                    <li>
+                        <strong>Env:</strong> {{ .Environment }} <br />
+                        <strong>Stack:</strong> {{ .Stack }} <br />
+                        <small>Deployed at: {{ .CreatedAt }}</small>
+                    </li>
+                    {{ end }}
+                </ul>
+            </div>
+            {{ else }}
+            <div class="deployments">
+                <em>No recent deployments.</em>
+            </div>
+            {{ end }}
+
+            <!-- Recent Commits Section -->
+            {{ if .RecentCommits }}
+            <div class="recent-commits">
+                <div class="recent-commits-title">Recent Commits:</div>
+                <ul class="recent-commits-list">
+                    {{ range .RecentCommits }}
+                    <li>
+                        <strong>Message:</strong> {{ .Message }} <br />
+                        <strong>Author:</strong> {{ .Author }} <br />
+                        <small>Date: {{ .Date }}</small>
+                    </li>
+                    {{ end }}
+                </ul>
+            </div>
+            {{ else }}
+            <div class="recent-commits">
+                <em>No recent commits.</em>
+            </div>
+            {{ end }}
+
         </div>
         {{ end }}
     </div>
