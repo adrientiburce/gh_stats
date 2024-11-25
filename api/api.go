@@ -34,6 +34,7 @@ type Repository struct {
 	PullRequests      []PullRequest
 	RecentCommits     []CommitRes
 	RecentDeployments []Deployment
+	CILink            string
 }
 
 type Author struct {
@@ -55,6 +56,7 @@ type CommitRes struct {
 	Message string
 	Date    string
 	Author  string
+	Link    string
 }
 
 type Deployment struct {
@@ -124,6 +126,8 @@ func fetchOneRepo(name string, repos *[]Repository, m *sync.Mutex, wg *sync.Wait
 		repo.RecentCommits = fetchCommits(name)
 	}
 
+	repo.CILink = fmt.Sprintf("%s%s", os.Getenv("CI_BASE_TEMPLATE"), repo.Name)
+
 	// doGithubRequest func(repoName, path string) (*http.Response, error)
 
 	m.Lock()
@@ -173,7 +177,7 @@ func fetchCommits(repoName string) []CommitRes {
 		return commits
 	}
 
-	fmt.Println("recentCommits", len(recentCommits))
+	commitFirstPart := regexp.MustCompile(`^(.*\s\(#\d+\))`)
 
 	// Convert to []Commit and limit to 5 commits from developers
 	for _, c := range recentCommits {
@@ -181,11 +185,18 @@ func fetchCommits(repoName string) []CommitRes {
 			continue
 		}
 
+		message := c.Commit.Message
+		matches := commitFirstPart.FindStringSubmatch(message)
+		if len(matches) > 1 {
+			message = matches[1] // Trim message to end with PR number
+		}
+
 		parsedDate, _ := time.Parse(time.RFC3339, c.Commit.Author.Date)
 		commits = append(commits, CommitRes{
-			Message: c.Commit.Message,
+			Message: message,
 			Author:  c.Commit.Author.Name,
 			Date:    parsedDate.Format("Jan 2"),
+			Link:    c.HTMLURL,
 		})
 
 		if len(commits) >= COMMITS_LIMITS {

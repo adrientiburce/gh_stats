@@ -1,11 +1,9 @@
 package api
 
 import (
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -37,15 +35,15 @@ func TestFetchRepo(t *testing.T) {
 	// Update doGithubRequest to point to the mock server
 	// originalDoGithubRequest := doGithubRequest
 
-	mockFunc := func(repoName, path string) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader(mockResponse)),
-		}, nil
-	}
+	// mockFunc := func(repoName, path string) (*http.Response, error) {
+	// 	return &http.Response{
+	// 		StatusCode: http.StatusOK,
+	// 		Body:       io.NopCloser(strings.NewReader(mockResponse)),
+	// 	}, nil
+	// }
 
 	// Call the method to test
-	repo := fetchRepo("mock-repo", mockFunc)
+	repo := fetchRepo("mock-repo")
 
 	// Assertions
 	if repo == nil {
