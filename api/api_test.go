@@ -1,13 +1,16 @@
 package api
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
+	// Replace with your actual module path
 )
 
-// Mock fetchRepo implementation for test
+// Mock fetchRepo server implementation
 func mockFetchRepoServer(response string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -18,33 +21,33 @@ func mockFetchRepoServer(response string) *httptest.Server {
 
 // LoadMockResponse loads mock JSON from a file
 func LoadMockResponse(t *testing.T, filePath string) string {
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		t.Fatalf("Failed to read mock response file: %v", err)
 	}
 	return string(data)
 }
 
+// MockGithubClient is a mock implementation of the GithubClient interface
+type MockGithubClient struct {
+	MockResponse string
+}
+
+func (m *MockGithubClient) DoGithubRequest(repoName, path string) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(m.MockResponse)),
+	}, nil
+}
+
 func TestFetchRepo(t *testing.T) {
 	mockResponse := LoadMockResponse(t, "../testdata/mock_repo.json")
 
-	// Create a mock server
-	server := mockFetchRepoServer(mockResponse)
-	defer server.Close()
+	// Use the mock client with the prepared response
+	mockClient := &MockGithubClient{MockResponse: mockResponse}
+	// mock DoGithubRequest method to use the mockClient
 
-	// Update doGithubRequest to point to the mock server
-	// originalDoGithubRequest := doGithubRequest
-
-	// mockFunc := func(repoName, path string) (*http.Response, error) {
-	// 	return &http.Response{
-	// 		StatusCode: http.StatusOK,
-	// 		Body:       io.NopCloser(strings.NewReader(mockResponse)),
-	// 	}, nil
-	// }
-
-	// Call the method to test
-	repo := fetchRepo("mock-repo")
-
+	repo := mockClient.DoGithubRequest()
 	// Assertions
 	if repo == nil {
 		t.Fatalf("Expected repo, got nil")
@@ -62,7 +65,4 @@ func TestFetchRepo(t *testing.T) {
 		t.Errorf("Expected PushedAt to be 'Nov 22', got '%s'", repo.PushedAt)
 	}
 
-	// if repo.Language != "Kotlin" {
-	// 	t.Errorf("Expected Language to be 'Kotlin', got '%s'", repo.Language)
-	// }
 }

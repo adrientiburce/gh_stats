@@ -36,7 +36,7 @@
             <!-- Pull requests section -->
             {{ if .PullRequests }}
             <div class="pull-requests">
-                <div class="pull-requests-title">Open Pull Requests:</div>
+                <div class="pull-requests-title">Open Pull Requests ({{ .PullRequests | len -}}):</div>
                 <ul class="pull-requests-list">
                     {{ range .PullRequests }}
                     <li>

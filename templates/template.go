@@ -1,13 +1,13 @@
 package templates
 
 import (
-	"gh_stats/api"
+	"gh_stats/model"
 	"html/template"
 	"log"
 	"net/http"
 )
 
-func RenderTemplate(w http.ResponseWriter, repos []api.Repository) {
+func RenderTemplate(w http.ResponseWriter, repos []model.Repository) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		http.Error(w, "Error loading template", http.StatusInternalServerError)

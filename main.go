@@ -10,6 +10,7 @@ import (
 
 	"gh_stats/api"
 	"gh_stats/config"
+	"gh_stats/model"
 )
 
 func main() {
@@ -23,7 +24,7 @@ func main() {
 	tmpl := template.Must(template.ParseFiles("templates/index.html"))
 
 	// Repos caching
-	var repos []api.Repository
+	var repos []model.Repository
 	var reposMutex sync.Mutex
 
 	go func() {

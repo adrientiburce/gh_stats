@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gh_stats/model"
 	"log"
 	"net/http"
 	"os"
@@ -14,72 +15,25 @@ import (
 	"time"
 )
 
-// PullRequest struct to represent a single PR
-type PullRequest struct {
-	Title     string `json:"title"`
-	HTMLURL   string `json:"html_url"`
-	CreatedAt string `json:"created_at"`
-}
-
-// Repository struct with PRs
-type Repository struct {
-	Name        string   `json:"name"`
-	FullName    string   `json:"full_name"`
-	Description string   `json:"description"`
-	Stargazers  int      `json:"stargazers_count"`
-	Topics      []string `json:"topics"`
-	PushedAt    string   `json:"pushed_at"`
-	// HTMLURL           string        `json:"html_url"`
-	Team              string
-	PullRequests      []PullRequest
-	RecentCommits     []CommitRes
-	RecentDeployments []Deployment
-	CILink            string
-}
-
-type Author struct {
-	Name string `json:"name"`
-	Date string `json:"date"`
-}
-
-type FullCommit struct {
-	Commit  Commit `json:"commit"`
-	HTMLURL string `json:"html_url"`
-}
-
-type Commit struct {
-	Message string `json:"message"`
-	Author  Author `json:"author"`
-}
-
-type CommitRes struct {
-	Message string
-	Date    string
-	Author  string
-	Link    string
-}
-
-type Deployment struct {
-	CreatedAt   string `json:"created_at"`
-	Environment string `json:"environment"`
-	Stack       string
-}
-
 const MAX_REPOS = 10
 const DEPLOYMENT_LIMITS = 3
 const COMMITS_LIMITS = 5
 
+type GithubClient interface {
+	DoGithubRequest(repoName, path string) (res *http.Response, err error)
+}
+
 // GetTopRepositories fetches top repositories and their PRs
-func GetTopRepositories() []Repository {
+func GetTopRepositories() []model.Repository {
 	reposEnv := os.Getenv("TOP_PROJECTS")
 	if reposEnv == "" {
-		return []Repository{}
+		return []model.Repository{}
 	}
 
 	var reposMutex sync.Mutex
 
 	repoNames := strings.Split(reposEnv, ",")
-	var repos []Repository
+	var repos []model.Repository
 	var wg sync.WaitGroup
 
 	for _, name := range repoNames {
@@ -93,10 +47,31 @@ func GetTopRepositories() []Repository {
 	}
 
 	wg.Wait()
-	return repos
+
+	return reorderRepos(repos, repoNames)
 }
 
-func doGithubRequest(repoName string, path string) (res *http.Response, err error) {
+func fetchOneRepo(name string, repos *[]model.Repository, m *sync.Mutex, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	client := &RealGithubClient{}
+	repo := client.FetchRepo(name)
+	if repo != nil {
+		repo.PullRequests = client.FetchPullRequests(name)
+		repo.RecentDeployments = client.FetchDeploy(name)
+		repo.RecentCommits = client.FetchCommits(name)
+	}
+	repo.CILink = fmt.Sprintf("%s%s", os.Getenv("CI_BASE_TEMPLATE"), repo.Name)
+
+	m.Lock()
+	*repos = append(*repos, *repo)
+	m.Unlock()
+}
+
+type RealGithubClient struct {
+}
+
+func (c *RealGithubClient) DoGithubRequest(repoName, path string) (res *http.Response, err error) {
 	apiURL := "https://api.github.com/repos/Glovo/" + repoName
 	if path != "" {
 		apiURL = apiURL + "/" + path
@@ -117,33 +92,15 @@ func doGithubRequest(repoName string, path string) (res *http.Response, err erro
 	return resp, err
 }
 
-func fetchOneRepo(name string, repos *[]Repository, m *sync.Mutex, wg *sync.WaitGroup) {
-	defer wg.Done()
-	repo := fetchRepo(name)
-	if repo != nil {
-		repo.PullRequests = fetchPullRequests(name)
-		repo.RecentDeployments = fetchDeploy(name)
-		repo.RecentCommits = fetchCommits(name)
-	}
-
-	repo.CILink = fmt.Sprintf("%s%s", os.Getenv("CI_BASE_TEMPLATE"), repo.Name)
-
-	// doGithubRequest func(repoName, path string) (*http.Response, error)
-
-	m.Lock()
-	*repos = append(*repos, *repo)
-	m.Unlock()
-}
-
-func fetchRepo(name string) *Repository {
-	resp, err := doGithubRequest(name, "")
+func (c *RealGithubClient) FetchRepo(name string) *model.Repository {
+	resp, err := c.DoGithubRequest(name, "")
 	if err != nil {
 		log.Printf("Github request failed for %s: %s", name, err)
 		return nil
 	}
 	defer resp.Body.Close()
 
-	var repo Repository
+	var repo model.Repository
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
 		log.Printf("Failed to parse repo %s: %v", name, err)
 		return nil
@@ -152,7 +109,7 @@ func fetchRepo(name string) *Repository {
 	var teamName string
 	for _, topic := range repo.Topics {
 		if strings.HasPrefix(topic, "t-") {
-			teamName = strings.Replace(topic, "t-", "", 0)
+			teamName = strings.Replace(topic, "t-", "", 1)
 		}
 	}
 
@@ -162,16 +119,16 @@ func fetchRepo(name string) *Repository {
 	return &repo
 }
 
-func fetchCommits(repoName string) []CommitRes {
-	resp, err := doGithubRequest(repoName, "commits?per_page=15")
+func (c *RealGithubClient) FetchCommits(repoName string) []model.CommitRes {
+	resp, err := c.DoGithubRequest(repoName, "commits?per_page=15")
 	if err != nil {
 		log.Printf("Can't fetch commits for %s: %v", repoName, err)
-		return []CommitRes{}
+		return []model.CommitRes{}
 	}
 	defer resp.Body.Close()
 
-	var commits []CommitRes
-	var recentCommits []FullCommit
+	var commits []model.CommitRes
+	var recentCommits []model.FullCommit
 	if err := json.NewDecoder(resp.Body).Decode(&recentCommits); err != nil {
 		log.Printf("Failed to parse commits for %s: %v", repoName, err)
 		return commits
@@ -192,7 +149,7 @@ func fetchCommits(repoName string) []CommitRes {
 		}
 
 		parsedDate, _ := time.Parse(time.RFC3339, c.Commit.Author.Date)
-		commits = append(commits, CommitRes{
+		commits = append(commits, model.CommitRes{
 			Message: message,
 			Author:  c.Commit.Author.Name,
 			Date:    parsedDate.Format("Jan 2"),
@@ -207,8 +164,8 @@ func fetchCommits(repoName string) []CommitRes {
 	return commits
 }
 
-func fetchDeploy(repoName string) (deploy []Deployment) {
-	resp, err := doGithubRequest(repoName, "deployments?per_page="+strconv.Itoa(DEPLOYMENT_LIMITS))
+func (c *RealGithubClient) FetchDeploy(repoName string) (deploy []model.Deployment) {
+	resp, err := c.DoGithubRequest(repoName, "deployments?per_page="+strconv.Itoa(DEPLOYMENT_LIMITS))
 	if err != nil {
 		log.Printf("Failed to fetch deploy for %s: %v", repoName, err)
 		return
@@ -220,39 +177,30 @@ func fetchDeploy(repoName string) (deploy []Deployment) {
 		return
 	}
 
-	// Regex to extract the environment name within square brackets and the stack name
-	envRegex := regexp.MustCompile(`\[(.*?)\]\s+(.*)`)
-
 	for i, d := range deploy {
 		parsedTime, _ := time.Parse(time.RFC3339, d.CreatedAt)
 		deploy[i].CreatedAt = parsedTime.Format("Jan 2 15:04:05")
 
-		matches := envRegex.FindStringSubmatch(d.Environment)
-		if len(matches) > 2 {
-			deploy[i].Environment = matches[1] // Extracted environment (e.g., "stage")
-			deploy[i].Stack = matches[2]       // Extracted stack (e.g., "customer-profile-events")
-		} else {
-			// Fallback for cases where regex doesn't match
-			deploy[i].Environment = d.Environment
-			deploy[i].Stack = "Unknown Stack"
-		}
+		env, stack := extractStack(d.Environment)
+		deploy[i].Environment = env
+		deploy[i].Stack = stack
 	}
 
 	return
 }
 
-func fetchPullRequests(repoName string) []PullRequest {
-	resp, err := doGithubRequest(repoName, "pulls?per_page=10")
+func (c *RealGithubClient) FetchPullRequests(repoName string) []model.PullRequest {
+	resp, err := c.DoGithubRequest(repoName, "pulls?per_page=10")
 	if err != nil {
 		log.Printf("Can't fetch PR for %s: %v", repoName, err)
-		return []PullRequest{}
+		return []model.PullRequest{}
 	}
 	defer resp.Body.Close()
 
-	var prs []PullRequest
+	var prs []model.PullRequest
 	if err := json.NewDecoder(resp.Body).Decode(&prs); err != nil {
 		log.Printf("Failed to parse PRs for %s: %v", repoName, err)
-		return []PullRequest{}
+		return []model.PullRequest{}
 	}
 
 	// Format dates for display
