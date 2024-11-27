@@ -11,6 +11,8 @@ import (
 	"gh_stats/api"
 	"gh_stats/config"
 	"gh_stats/model"
+	"gh_stats/stats"
+	"gh_stats/templates"
 )
 
 func main() {
@@ -25,15 +27,18 @@ func main() {
 
 	// Repos caching
 	var repos []model.Repository
+	var stats *stats.RenderedStats
 	var reposMutex sync.Mutex
 
 	go func() {
 		defer logTime("Api call", time.Now())
-		fetchedRepos := api.GetTopRepositories()
+		var client = api.NewGithubClient()
+		fetchedRepos := api.GetTopRepositories(client)
 
 		// log.Printf("fetched %d repos", fetchedRepos)
 		reposMutex.Lock()
 		repos = fetchedRepos
+		stats = client.Stats.GetRenderedStats()
 		reposMutex.Unlock()
 	}()
 
@@ -42,8 +47,8 @@ func main() {
 		reposMutex.Lock()
 		defer reposMutex.Unlock()
 
-		// fmt.Printf("passing template repositories: %+v\n", repos) // Debug
-		tmpl.Execute(w, repos)
+		data := templates.GetData(repos, stats)
+		tmpl.Execute(w, data)
 	})
 
 	// Start the server

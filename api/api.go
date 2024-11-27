@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"gh_stats/model"
+	"gh_stats/stats"
 	"log"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +24,7 @@ type GithubClient interface {
 }
 
 // GetTopRepositories fetches top repositories and their PRs
-func GetTopRepositories() []model.Repository {
+func GetTopRepositories(client GithubClient) []model.Repository {
 	reposEnv := os.Getenv("TOP_PROJECTS")
 	if reposEnv == "" {
 		return []model.Repository{}
@@ -38,7 +38,7 @@ func GetTopRepositories() []model.Repository {
 
 	for _, name := range repoNames {
 		wg.Add(1)
-		go fetchOneRepo(name, &repos, &reposMutex, &wg)
+		go fetchOneRepo(name, &repos, &reposMutex, &wg, client)
 
 		// for now only top 10 repos
 		if len(repos) >= MAX_REPOS {
@@ -51,15 +51,14 @@ func GetTopRepositories() []model.Repository {
 	return reorderRepos(repos, repoNames)
 }
 
-func fetchOneRepo(name string, repos *[]model.Repository, m *sync.Mutex, wg *sync.WaitGroup) {
+func fetchOneRepo(name string, repos *[]model.Repository, m *sync.Mutex, wg *sync.WaitGroup, client GithubClient) {
 	defer wg.Done()
 
-	client := &RealGithubClient{}
-	repo := client.FetchRepo(name)
+	repo := FetchRepo(name, client)
 	if repo != nil {
-		repo.PullRequests = client.FetchPullRequests(name)
-		repo.RecentDeployments = client.FetchDeploy(name)
-		repo.RecentCommits = client.FetchCommits(name)
+		repo.PullRequests = FetchPullRequests(name, client)
+		repo.RecentDeployments = FetchDeploy(name, client)
+		repo.RecentCommits = FetchCommits(name, client)
 	}
 	repo.CILink = fmt.Sprintf("%s%s", os.Getenv("CI_BASE_TEMPLATE"), repo.Name)
 
@@ -69,6 +68,12 @@ func fetchOneRepo(name string, repos *[]model.Repository, m *sync.Mutex, wg *syn
 }
 
 type RealGithubClient struct {
+	Stats stats.Stats
+}
+
+// NewGithubClient return the real github client
+func NewGithubClient() *RealGithubClient {
+	return &RealGithubClient{}
 }
 
 func (c *RealGithubClient) DoGithubRequest(repoName, path string) (res *http.Response, err error) {
@@ -81,7 +86,10 @@ func (c *RealGithubClient) DoGithubRequest(repoName, path string) (res *http.Res
 	req, _ := http.NewRequest("GET", apiURL, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
+	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)
+	elapsed := time.Since(start)
+
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if err == nil {
 			err = errors.New(fmt.Sprintf("StatusCode not [200] but %d", resp.StatusCode))
@@ -89,11 +97,13 @@ func (c *RealGithubClient) DoGithubRequest(repoName, path string) (res *http.Res
 		return nil, err
 	}
 
+	c.Stats.UpdateResponseTime(elapsed)
+
 	return resp, err
 }
 
-func (c *RealGithubClient) FetchRepo(name string) *model.Repository {
-	resp, err := c.DoGithubRequest(name, "")
+func FetchRepo(name string, client GithubClient) *model.Repository {
+	resp, err := client.DoGithubRequest(name, "")
 	if err != nil {
 		log.Printf("Github request failed for %s: %s", name, err)
 		return nil
@@ -119,7 +129,7 @@ func (c *RealGithubClient) FetchRepo(name string) *model.Repository {
 	return &repo
 }
 
-func (c *RealGithubClient) FetchCommits(repoName string) []model.CommitRes {
+func FetchCommits(repoName string, c GithubClient) []model.CommitRes {
 	resp, err := c.DoGithubRequest(repoName, "commits?per_page=15")
 	if err != nil {
 		log.Printf("Can't fetch commits for %s: %v", repoName, err)
@@ -134,23 +144,15 @@ func (c *RealGithubClient) FetchCommits(repoName string) []model.CommitRes {
 		return commits
 	}
 
-	commitFirstPart := regexp.MustCompile(`^(.*\s\(#\d+\))`)
-
 	// Convert to []Commit and limit to 5 commits from developers
 	for _, c := range recentCommits {
 		if c.Commit.Author.Name == "GlovoRobot" {
 			continue
 		}
 
-		message := c.Commit.Message
-		matches := commitFirstPart.FindStringSubmatch(message)
-		if len(matches) > 1 {
-			message = matches[1] // Trim message to end with PR number
-		}
-
 		parsedDate, _ := time.Parse(time.RFC3339, c.Commit.Author.Date)
 		commits = append(commits, model.CommitRes{
-			Message: message,
+			Message: extractCommitMessage(c.Commit.Message),
 			Author:  c.Commit.Author.Name,
 			Date:    parsedDate.Format("Jan 2"),
 			Link:    c.HTMLURL,
@@ -164,7 +166,7 @@ func (c *RealGithubClient) FetchCommits(repoName string) []model.CommitRes {
 	return commits
 }
 
-func (c *RealGithubClient) FetchDeploy(repoName string) (deploy []model.Deployment) {
+func FetchDeploy(repoName string, c GithubClient) (deploy []model.Deployment) {
 	resp, err := c.DoGithubRequest(repoName, "deployments?per_page="+strconv.Itoa(DEPLOYMENT_LIMITS))
 	if err != nil {
 		log.Printf("Failed to fetch deploy for %s: %v", repoName, err)
@@ -189,7 +191,7 @@ func (c *RealGithubClient) FetchDeploy(repoName string) (deploy []model.Deployme
 	return
 }
 
-func (c *RealGithubClient) FetchPullRequests(repoName string) []model.PullRequest {
+func FetchPullRequests(repoName string, c GithubClient) []model.PullRequest {
 	resp, err := c.DoGithubRequest(repoName, "pulls?per_page=10")
 	if err != nil {
 		log.Printf("Can't fetch PR for %s: %v", repoName, err)

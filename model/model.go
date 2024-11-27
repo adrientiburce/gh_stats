@@ -9,13 +9,13 @@ type PullRequest struct {
 
 // Repository struct with PRs
 type Repository struct {
-	Name        string   `json:"name"`
-	FullName    string   `json:"full_name"`
-	Description string   `json:"description"`
-	Stargazers  int      `json:"stargazers_count"`
-	Topics      []string `json:"topics"`
-	PushedAt    string   `json:"pushed_at"`
-	// HTMLURL           string        `json:"html_url"`
+	Name              string   `json:"name"`
+	FullName          string   `json:"full_name"`
+	Description       string   `json:"description"`
+	Stargazers        int      `json:"stargazers_count"`
+	Topics            []string `json:"topics"`
+	PushedAt          string   `json:"pushed_at"`
+	HTMLURL           string   `json:"html_url"`
 	Team              string
 	PullRequests      []PullRequest
 	RecentCommits     []CommitRes
@@ -23,16 +23,16 @@ type Repository struct {
 	CILink            string
 }
 
-// Author of a commit
-type Author struct {
-	Name string `json:"name"`
-	Date string `json:"date"`
-}
-
 // FullCommit is the object we get from /commits API
 type FullCommit struct {
 	Commit  Commit `json:"commit"`
 	HTMLURL string `json:"html_url"`
+}
+
+// Author of a commit
+type Author struct {
+	Name string `json:"name"`
+	Date string `json:"date"`
 }
 
 // Sub object from the commit API

@@ -9,11 +9,11 @@
 <body>
     <h1>Top 5 Repositories</h1>
     <div class="grid-container">
-        {{ range . }}
+        {{ range .Repositories }}
         <div class="card">
             <div class="card-header">
                 <div class="card-title">
-                    <a href="/repos/{{ .Name }}">{{ .Name }}</a>
+                    <a href="{{ .HTMLURL }}">{{ .Name }}</a>
                 </div>
                 <div class="ci-link">
                     <a href="{{ .CILink }}" target="_blank" rel="noopener noreferrer">
@@ -30,7 +30,7 @@
             </div>
             <div class="card-footer">
                 <span class="team">{{ .Team }}</span>
-                <span>{{ .PushedAt }}</span>
+                <span>last push: {{ .PushedAt }}</span>
             </div>
 
             <!-- Pull requests section -->
@@ -99,5 +99,11 @@
         </div>
         {{ end }}
     </div>
+
+    <footer class="stats-footer">
+        <small>
+            API Calls: {{ .Stats.NumberCalls }} | Avg Response Time: {{ .Stats.AvgResponseTime }}
+        </small>
+    </footer>
 </body>
 </html>

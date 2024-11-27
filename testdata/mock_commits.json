@@ -1,0 +1,62 @@
+[
+    {
+        "html_url": "https://github.com/Glovo/repo/commit/sha1",
+        "commit": {
+            "message": "Feature: Add new functionality (#123) -- Added geocoding response",
+            "author": {
+                "name": "John Doe",
+                "date": "2024-01-15T10:30:00Z"
+            }
+        }
+    },
+    {
+        "html_url": "https://github.com/Glovo/repo/commit/sha2",
+        "commit": {
+            "message": "Fix: Resolve critical bug (#456) -- http bugs on connections",
+            "author": {
+                "name": "Jane Smith",
+                "date": "2024-01-16T11:45:00Z"
+            }
+        }
+    },
+    {
+        "html_url": "https://github.com/Glovo/repo/commit/sha3",
+        "commit": {
+            "message": "Maintenance: Update dependencies (#789) -- http bugs on connections",
+            "author": {
+                "name": "GlovoRobot",
+                "date": "2024-01-17T12:00:00Z"
+            }
+        }
+    },
+    {
+        "html_url": "https://github.com/Glovo/repo/commit/sha4",
+        "commit": {
+            "message": "Refactor: Improve code structure (#101)",
+            "author": {
+                "name": "Alice Johnson",
+                "date": "2024-01-18T13:15:00Z"
+            }
+        }
+    },
+    {
+        "html_url": "https://github.com/Glovo/repo/commit/sha5",
+        "commit": {
+            "message": "Performance: Optimize database queries (#202)",
+            "author": {
+                "name": "Bob Williams",
+                "date": "2024-01-19T14:30:00Z"
+            }
+        }
+    },
+    {
+        "html_url": "https://github.com/Glovo/repo/commit/sha6",
+        "commit": {
+            "message": "Extra commit that should be skipped",
+            "author": {
+                "name": "Extra Developer",
+                "date": "2024-01-20T15:45:00Z"
+            }
+        }
+    }
+]

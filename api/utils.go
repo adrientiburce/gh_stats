@@ -32,3 +32,15 @@ func extractStack(envstack string) (env, stack string) {
 		return envstack, "unknown"
 	}
 }
+
+func extractCommitMessage(message string) (res string) {
+	commitFirstPart := regexp.MustCompile(`^(.*\s\(#\d+\))`)
+	res = message
+	matches := commitFirstPart.FindStringSubmatch(message)
+
+	if len(matches) > 1 {
+		res = matches[1] // Trim message to end with PR number
+	}
+
+	return
+}
